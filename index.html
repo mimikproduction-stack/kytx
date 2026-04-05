@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Оберег Судьбы</title>
+    <style>
+        :root {
+            --gold: #d4a373;
+            --bg-color: #1a1a1b;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            background-color: var(--bg-color);
+            color: var(--gold);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            height: 100vh; font-family: serif;
+            overflow: hidden; user-select: none;
+        }
+
+        .amulet-container {
+            position: relative;
+            width: 320px; height: 320px;
+            transition: transform 0.1s ease-out;
+            cursor: pointer;
+            z-index: 1;
+        }
+
+        .amulet-container.pressed { transform: scale(0.94); }
+
+        .amulet-bg {
+            width: 100%; height: 100%;
+            background: url('bg.png') no-repeat center;
+            background-size: contain;
+            position: absolute; top: 0; left: 0;
+            z-index: 1;
+        }
+
+        /* Слой с вороной и символами */
+        #game-view {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 10;
+            /* Ускорили анимацию до 0.6с */
+            transition: opacity 0.6s ease-out, filter 0.6s ease-out;
+            opacity: 1;
+        }
+
+        .fade-out {
+            opacity: 0 !important;
+            filter: blur(15px);
+            pointer-events: none;
+        }
+
+        .symbols-layer {
+            position: absolute; width: 100%; height: 100%; z-index: 11;
+        }
+
+        .symbol-item {
+            position: absolute;
+            width: 32px; height: 32px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .symbol-item.highlight {
+            transform: scale(2.5) !important;
+            filter: drop-shadow(0 0 15px #ffcc00);
+            z-index: 20;
+        }
+
+        #crow {
+            width: 100%; height: 100%;
+            background: url('crow.png') no-repeat center;
+            background-size: contain;
+            position: absolute; top: 0; left: 0;
+            z-index: 15;
+            transition: transform 4s cubic-bezier(0.1, 0, 0.1, 1);
+        }
+  
+#arrow-decor {
+    width: 50%; height: 50%;
+    background: url('arrow.png') no-repeat center;
+    background-size: contain; /* Это растянет картинку ровно по границам амулета, как у ворона */
+    position: absolute; top: 25%; left: 25%;
+    z-index: 14; 
+    opacity: 1;
+    /* Убедись, что время (4s) совпадает с временем у #crow */
+    transition: transform 4s cubic-bezier(0.1, 0, 0.1, 1);
+}
+#beads-layer {
+    width: 100%; height: 100%;
+    background: url('beads.png') no-repeat center;
+    background-size: contain;
+    position: absolute; top: 0; left: 0;
+    z-index: 5; /* Ниже стрелок, но выше фона */
+    transition: transform 0.2s ease-out; /* Плавный возврат */
+}
+
+/* Класс для анимации прыжка */
+.jump {
+    transform: translateY(-15px); /* Подпрыгивает вверх на 15 пикселей */
+}
+
+        /* Слой ПЕРГАМЕНТА */
+        #parchment-layer {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 500px; height: 330px; /* УВЕЛИЧЕНО ТУТ */
+            background: url('parchment.png') no-repeat center;
+            background-size: contain;
+            z-index: 30;
+            display: flex; justify-content: center; align-items: center;
+            padding: 25px; box-sizing: border-box;
+            opacity: 0; filter: blur(10px);
+            /* Ускорили проявление до 0.6с */
+            transition: opacity 0.6s ease-in, filter 0.6s ease-in;
+            pointer-events: none;
+        }
+
+        #parchment-layer.show { opacity: 1; filter: blur(0px); }
+
+        .prediction-text {
+            color: #4a3721; font-size: 0.95rem; line-height: 1.3;
+            text-align: center; font-weight: bold;
+        }
+
+        .result-text {
+            margin-top: 40px; font-size: 20px; font-weight: bold;
+            text-align: center; min-height: 30px; text-transform: uppercase;
+            transition: opacity 0.4s;
+        }
+    </style>
+</head>
+<body>
+    <audio id="spin-sound" src="spin.mp3" preload="auto"></audio>
+    <div class="amulet-container" id="main-area">
+        <div class="amulet-bg"></div>
+        <div id="beads-layer"></div> 
+        
+        <div id="game-view">
+            <div class="symbols-layer" id="symbols-container"></div>
+            <div id="arrow-decor"></div>
+            <div id="crow"></div>
+        </div>
+
+        <div id="parchment-layer">
+            <div class="prediction-text" id="p-text"></div>
+        </div>
+    </div>
+
+    <div id="status" class="result-text">Коснись оберега</div>
+
+    <script>
+        const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+        if (tg) tg.expand();
+        
+                const symbolsData = [
+            { name: "Ядерный гриб", img: "grib.png", text: "Бебешка" },
+            { name: "Велес", img: "V.png", text: "Бебешка" },
+            { name: "Игла", img: "igla.png", text: "Бебешка" },
+            { name: "Чапалах", img: "ch.png", text: "Бебешка" },
+            { name: "Пуля", img: "bullet.png", text: "Бебешка" },
+            { name: "Бомонд", img: "bokal.png", text: "Бебешка" },
+            { name: "Ромашка", img: "romashka.png", text: "Бебешка" },
+            { name: "Ладья", img: "ladia.png", text: "Бебешка" },
+            { name: "Иллюминаты", img: "eye.png", text: "Бебешка" },
+            { name: "Оберег", img: "obereg.png", text: "Бебешка" },
+            { name: "Жесткая рука", img: "hand.png", text: "Бебешка" },
+            { name: "Инет", img: "wifi.png", text: "Бебешка" }
+        ];
+
+        const container = document.getElementById('symbols-container');
+        const radius = 86; const centerX = 160; const centerY = 152;    
+
+        symbolsData.forEach((sym, i) => {
+            const angle = (i * (360 / symbolsData.length) - 120) * (Math.PI / 180);
+            const x = centerX + radius * Math.cos(angle) - 16; 
+            const y = centerY + radius * Math.sin(angle) - 16;
+            const div = document.createElement('div');
+            div.className = 'symbol-item'; div.id = 'sym-' + i;
+            div.style.left = x + 'px'; div.style.top = y + 'px';
+            div.style.backgroundImage = `url('${sym.img}')`;
+            container.appendChild(div);
+        });
+        let decorRotation = 0;
+        let currentRotation = 0; let isSpinning = false;
+
+        document.getElementById('main-area').addEventListener('click', function() {
+            if (isSpinning) return;
+        document.getElementById('spin-sound').play(); 
+const beads = document.getElementById('beads-layer');
+    beads.classList.add('jump');
+    setTimeout(() => {
+        beads.classList.remove('jump');
+    }, 200);
+            
+            // Если пергамент уже показан — мгновенно сбрасываем вид
+            if(document.getElementById('parchment-layer').classList.contains('show')) {
+                resetApp();
+            }
+
+            this.classList.add('pressed');
+            setTimeout(() => this.classList.remove('pressed'), 100);
+            
+            isSpinning = true;
+            document.getElementById('status').innerText = "Оберег пробуждается...";
+
+            const randomExtra = Math.floor(Math.random() * 360);
+            currentRotation += 1500 + Math.floor(Math.random() * 2300); 
+            document.getElementById('crow').style.transform = `rotate(${currentRotation}deg)`;
+decorRotation -= (3000 + Math.floor(Math.random() * 4000)); 
+document.getElementById('arrow-decor').style.transform = `rotate(${decorRotation}deg)`;
+
+            setTimeout(() => {
+                const actualAngle = currentRotation % 360;
+                const sectorStep = 360 / symbolsData.length;
+                const index = Math.floor(((actualAngle - 5 + 360) % 360) / sectorStep) % symbolsData.length;
+                
+                const winSym = document.getElementById('sym-' + index);
+                if (winSym) {
+                    winSym.classList.add('highlight');
+                    document.getElementById('status').innerText = symbolsData[index].name;
+
+                    setTimeout(() => {
+                        document.getElementById('game-view').classList.add('fade-out');
+                        document.getElementById('p-text').innerText = symbolsData[index].text;
+                        document.getElementById('parchment-layer').classList.add('show');
+                        document.getElementById('status').style.opacity = "0";
+                    }, 1000);
+                }
+                if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                isSpinning = false; // Разрешаем клик для сброса/нового круга
+            }, 4000);
+        });
+
+        function resetApp() {
+            document.getElementById('game-view').classList.remove('fade-out');
+            document.getElementById('parchment-layer').classList.remove('show');
+            document.getElementById('status').style.opacity = "1";
+            document.querySelectorAll('.symbol-item').forEach(el => el.classList.remove('highlight'));
+        }
+    </script>
+</body>
+</html>
